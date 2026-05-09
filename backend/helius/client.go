@@ -36,7 +36,7 @@ const (
 	// MinSampleSize is exported so the handler can gate analysis on it.
 	// 150 transactions is the minimum for statistically reliable heuristic scores,
 	// especially in strict-mode small-cap analysis.
-	MinSampleSize = 150
+	MinSampleSize = 100
 )
 
 type Client struct {
