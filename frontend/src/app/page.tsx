@@ -68,7 +68,7 @@ export default function HomePage() {
     const timeoutId = setTimeout(() => controller.abort(), 25_000)
 
     try {
-      const res = await fetch(`/api/integrity/${address}`, { signal: controller.signal })
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/integrity/${address}`, { signal: controller.signal })
       clearTimeout(timeoutId)
       const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
 
