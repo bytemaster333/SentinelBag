@@ -38,27 +38,27 @@ const (
 
 // ClassifyTier implements the Proof of Ecosystem gate.
 //
-// HARD GATE — uniqueSenders < 400 → TierStrict. No exceptions.
-// A token cannot be considered safe-by-volume when fewer than 400 distinct
-// wallets are participating, regardless of how high infraShare looks. Wash
-// traders inflate txn counts trivially, but provisioning 400+ funded wallets
-// has real on-chain cost. Below this floor, only strict scoring applies.
+// HARD GATE — uniqueSenders < 30 → TierStrict. No exceptions.
+// In a 1000-transaction sample, even the largest blue-chip tokens rarely
+// surface 400+ distinct senders because volume is concentrated through CEX
+// hot wallets and AMM pools. 30 is the minimum-signal floor: below this,
+// the sample is too sparse for any statistical inference to be meaningful.
 //
 // Above the floor:
-//   - infraShare < 5%             → TierStrict (no DEX evidence)
+//   - infraShare < 1%             → TierStrict (no DEX evidence)
 //   - pump suffix + infra < 15%   → TierStrict (bonding-curve self-traffic)
-//   - !pump + uniqueSenders > 400 → TierBluechip
+//   - !pump + uniqueSenders > 30  → TierBluechip
 //   - otherwise                   → TierStandard
 func ClassifyTier(tokenAddress string, uniqueSenders int, infraShare float64) ScoringTier {
-	// SEAL: under 400 unique senders, no token escapes strict mode — period.
-	if uniqueSenders < 400 {
+	// SEAL: under 30 unique senders, no token escapes strict mode — period.
+	if uniqueSenders < 30 {
 		return TierStrict
 	}
 
 	isPump := strings.HasSuffix(strings.ToLower(tokenAddress), "pump")
 
 	// Proof of Ecosystem: insufficient infra interaction → always strict
-	if infraShare < 0.05 {
+	if infraShare < 0.01 {
 		return TierStrict
 	}
 	// Pump tokens need a tighter bar (15%) to exit strict mode;
