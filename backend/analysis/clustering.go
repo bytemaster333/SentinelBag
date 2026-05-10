@@ -67,6 +67,40 @@ func AnalyzeClustering(txns []models.HeliusTransaction, tokenAddress string, pre
 		return noDataResult("Wallet Clustering", "No token transfer volume found in sampled transactions")
 	}
 
+	// Early exit: if infrastructure wallets (AMMs, aggregators, mint authorities) account
+	// for more than half of total volume AND the highest-volume non-infrastructure sender
+	// is below 40%, this token's concentration pattern is driven by protocol activity,
+	// not wash trading. Return CLEAN without running the full HHI calculation.
+	{
+		infraVol := 0.0
+		maxNonInfraVol := 0.0
+		infraCount := 0
+		for addr, vol := range senderVolume {
+			if _, ok := IsInfrastructureWallet(addr); ok {
+				infraVol += vol
+				infraCount++
+			} else if vol > maxNonInfraVol {
+				maxNonInfraVol = vol
+			}
+		}
+		infraFrac := infraVol / totalVolume
+		nonInfraTopShare := maxNonInfraVol / totalVolume
+		if nonInfraTopShare < 0.40 && infraFrac > 0.50 {
+			log.Printf("clustering: infra-dominated (%.0f%% infra, %.0f%% non-infra top, %d wallets) — CLEAN",
+				infraFrac*100, nonInfraTopShare*100, infraCount)
+			return models.AnalysisResult{
+				Rule: "Wallet Clustering",
+				Detail: fmt.Sprintf(
+					"Volume dominated by infrastructure (Raydium, Jupiter, etc.) — no concentration penalty applied (%d infra wallets excluded)",
+					infraCount,
+				),
+				Severity: "CLEAN",
+				Flag:     "",
+				Score:    0,
+			}
+		}
+	}
+
 	// Classify scoring tier using the centrally-computed infraShare from the handler.
 	// BIDIRECTIONAL market-maker discount is disabled in strict mode — wash traders
 	// that happen to both buy and sell must not benefit from the 50% HHI reduction.
@@ -167,15 +201,19 @@ func AnalyzeClustering(txns []models.HeliusTransaction, tokenAddress string, pre
 	case TierBluechip:
 		modePrefix = "[bluechip] "
 	}
+	infraSuffix := ""
+	if infraHits > 0 {
+		infraSuffix = fmt.Sprintf(", %d infra excluded", infraHits)
+	}
 	if severity == "CLEAN" {
 		detail = fmt.Sprintf(
-			"%sHealthy distribution — adjusted HHI: %.3f, top wallet: %.0f%%, top 3: %.0f%% (%d senders)",
-			modePrefix, hhi, top1Share*100, top3Share*100, len(ranked),
+			"%sHealthy distribution — adjusted HHI: %.3f, top wallet: %.0f%%, top 3: %.0f%% (%d senders%s)",
+			modePrefix, hhi, top1Share*100, top3Share*100, len(ranked), infraSuffix,
 		)
 	} else {
 		detail = fmt.Sprintf(
-			"%sAdjusted HHI: %.3f — top wallet: %.0f%%, top 3: %.0f%% of volume (%d senders, infra: %.0f%%)",
-			modePrefix, hhi, top1Share*100, top3Share*100, len(ranked), infraShare*100,
+			"%sAdjusted HHI: %.3f — top wallet: %.0f%%, top 3: %.0f%% of volume (%d senders, infra: %.0f%%%s)",
+			modePrefix, hhi, top1Share*100, top3Share*100, len(ranked), infraShare*100, infraSuffix,
 		)
 	}
 	if totalTxns < 100 {
